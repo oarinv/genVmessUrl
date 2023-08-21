@@ -1,3 +1,3 @@
-module singbox
+module genVmessUrl
 
 go 1.21.0

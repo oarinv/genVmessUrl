@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"time"
 )
@@ -34,9 +35,20 @@ type Outbound struct {
 	Type string `json:"type"`
 }
 
+func getLocalIP() (string, error) {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String(), nil
+}
+
 func generateVmessLink(inbound Inbound) string {
 	user := inbound.Users[0] // Assuming there's only one user in the inbound
-	vmessLink := fmt.Sprintf("vmess://%s@%s:%d", user.UUID, inbound.Listen, inbound.ListenPort)
+	// vmessLink := fmt.Sprintf("vmess://%s@%s:%d", user.UUID, inbound.Listen, inbound.ListenPort)
 
 	// Generate base64 encoded JSON with necessary settings
 	settingsJSON := fmt.Sprintf(`{
@@ -57,12 +69,19 @@ func generateVmessLink(inbound Inbound) string {
 	settingsBase64 := base64.StdEncoding.EncodeToString([]byte(settingsJSON))
 
 	// Append settings to the vmess link
-	vmessLink = fmt.Sprintf("%s#%s", vmessLink, settingsBase64)
+	vmessLink := fmt.Sprintf("vmess://%s", settingsBase64)
 
 	return vmessLink
 }
 
 func generateAndWriteVmessLinks() {
+	// 获取本机 IP 地址
+	ip, err := getLocalIP()
+	if err != nil {
+		fmt.Println("Error getting local IP:", err)
+		return
+	}
+
 	// 打开 JSON 文件
 	file, err := os.Open("/usr/local/etc/sing-box/config.json")
 	if err != nil {
@@ -97,6 +116,7 @@ func generateAndWriteVmessLinks() {
 	// 生成 VMESS 链接并写入文件
 	for _, inbound := range config.Inbounds {
 		if inbound.Type == "vmess" {
+			inbound.Listen = ip
 			vmessLink := generateVmessLink(inbound)
 			_, err := outputFile.WriteString(vmessLink + "\n")
 			if err != nil {
@@ -128,6 +148,7 @@ func runDaily(task func()) {
 }
 
 func main() {
+	// 第一次运行时，运行一次函数
 	generateAndWriteVmessLinks()
 
 	runDaily(func() {
